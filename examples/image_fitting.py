@@ -19,10 +19,12 @@ class SimpleTrainer:
     def __init__(
         self,
         gt_image: Tensor,
+        white_background: bool = False,
         num_points: int = 2000,
     ):
         self.device = torch.device("cuda:0")
         self.gt_image = gt_image.to(device=self.device)
+        self.white_background = white_background
         self.num_points = num_points
 
         fov_x = math.pi / 2.0
@@ -65,7 +67,7 @@ class SimpleTrainer:
             ],
             device=self.device,
         )
-        self.background = torch.zeros(d, device=self.device)
+        self.background = torch.ones(d, device=self.device) if self.white_background else torch.zeros(d, device=self.device)
 
         self.means.requires_grad = True
         self.scales.requires_grad = True
@@ -107,6 +109,7 @@ class SimpleTrainer:
                 self.W,
                 self.H,
                 packed=False,
+                backgrounds=self.background[None]
             )
             out_img = renders[0]
             torch.cuda.synchronize()
@@ -157,6 +160,7 @@ def main(
     save_imgs: bool = True,
     img_path: Optional[Path] = None,
     iterations: int = 1000,
+    white_background: bool = False,
     lr: float = 0.01,
 ) -> None:
     if img_path:
@@ -167,7 +171,7 @@ def main(
         gt_image[: height // 2, : width // 2, :] = torch.tensor([1.0, 0.0, 0.0])
         gt_image[height // 2 :, width // 2 :, :] = torch.tensor([0.0, 0.0, 1.0])
 
-    trainer = SimpleTrainer(gt_image=gt_image, num_points=num_points)
+    trainer = SimpleTrainer(gt_image=gt_image, white_background=white_background, num_points=num_points)
     trainer.train(
         iterations=iterations,
         lr=lr,
