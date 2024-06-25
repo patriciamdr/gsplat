@@ -118,7 +118,7 @@ class Parser:
         w2c_mats = np.stack(w2c_mats, axis=0)
 
         # Convert extrinsics to camera-to-world.
-        camtoworlds = np.linalg.inv(w2c_mats)
+        cam2worlds = np.linalg.inv(w2c_mats)
 
         # Image names from COLMAP. No need for permuting the poses according to
         # image names anymore.
@@ -128,7 +128,7 @@ class Parser:
         # ensure metrics are reported on the same test set.
         inds = np.argsort(image_names)
         image_names = [image_names[i] for i in inds]
-        camtoworlds = camtoworlds[inds]
+        cam2worlds = cam2worlds[inds]
         camera_ids = [camera_ids[i] for i in inds]
 
         # Load images.
@@ -167,12 +167,12 @@ class Parser:
 
         # Normalize the world space.
         if normalize:
-            T1 = similarity_from_cameras(camtoworlds)
-            camtoworlds = transform_cameras(T1, camtoworlds)
+            T1 = similarity_from_cameras(cam2worlds)
+            cam2worlds = transform_cameras(T1, cam2worlds)
             points = transform_points(T1, points)
 
             T2 = align_principle_axes(points)
-            camtoworlds = transform_cameras(T2, camtoworlds)
+            cam2worlds = transform_cameras(T2, cam2worlds)
             points = transform_points(T2, points)
 
             transform = T2 @ T1
@@ -181,7 +181,7 @@ class Parser:
 
         self.image_names = image_names  # List[str], (num_images,)
         self.image_paths = image_paths  # List[str], (num_images,)
-        self.camtoworlds = camtoworlds  # np.ndarray, (num_images, 4, 4)
+        self.cam2worlds = cam2worlds  # np.ndarray, (num_images, 4, 4)
         self.camera_ids = camera_ids  # List[int], (num_images,)
         self.Ks_dict = Ks_dict  # Dict of camera_id -> K
         self.params_dict = params_dict  # Dict of camera_id -> params
@@ -218,7 +218,7 @@ class Parser:
             self.roi_undist_dict[camera_id] = roi_undist
 
         # size of the scene measured by cameras
-        camera_locations = camtoworlds[:, :3, 3]
+        camera_locations = cam2worlds[:, :3, 3]
         scene_center = np.mean(camera_locations, axis=0)
         dists = np.linalg.norm(camera_locations - scene_center, axis=1)
         self.scene_scale = np.max(dists)
@@ -253,7 +253,7 @@ class Dataset:
         camera_id = self.parser.camera_ids[index]
         K = self.parser.Ks_dict[camera_id].copy()  # undistorted K
         params = self.parser.params_dict[camera_id]
-        camtoworlds = self.parser.camtoworlds[index]
+        cam2worlds = self.parser.cam2worlds[index]
 
         if len(params) > 0:
             # Images are distorted. Undistort them.
@@ -276,14 +276,14 @@ class Dataset:
 
         data = {
             "K": torch.from_numpy(K).float(),
-            "camtoworld": torch.from_numpy(camtoworlds).float(),
+            "cam2world": torch.from_numpy(cam2worlds).float(),
             "image": torch.from_numpy(image).float(),
             "image_id": item,  # the index of the image in the dataset
         }
 
         if self.load_depths:
             # projected points to image plane to get depths
-            worldtocams = np.linalg.inv(camtoworlds)
+            worldtocams = np.linalg.inv(cam2worlds)
             image_name = self.parser.image_names[index]
             point_indices = self.parser.point_indices[image_name]
             points_world = self.parser.points[point_indices]
